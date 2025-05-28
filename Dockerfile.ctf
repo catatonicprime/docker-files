@@ -1,0 +1,56 @@
+# ---- Add software packages
+FROM ubuntu:latest
+RUN apt update && DEBIAN_FRONTEND=noninteractive apt install -y ascii bundler clang curl file fish gdb git graphviz iproute2 iputils-ping libpcap-dev libpq-dev bundler llvm locales ltrace nmap openssh-server proxychains python3 python3-pip python3-venv socat ssh strace supervisor tcpdump tshark ttyd vim wget
+
+# ---- Setup supervisord which will let us run both ttyd and sshd for exposing the service.
+COPY ctf/supervisord.conf /etc/supervisor/conf.d/console.conf
+EXPOSE 22 7681
+
+# ---- Stage directory structure
+RUN groupmod -n ctf ubuntu && usermod -l ctf ubuntu && mv /home/ubuntu /home/ctf
+ARG TOOLS_DIR=/tools
+RUN mkdir -p $TOOLS_DIR /root/.ssh /var/run/sshd /run/sshd && chmod 755 /var/run/sshd /run/sshd 
+
+ARG PYTHON_VENV=python-active
+# Create the tools Python environment and install network tools, machine learning, etc.
+RUN bash -c "cd $TOOLS_DIR && python3 -m venv $(python3 --version | cut -d ' ' -f 2) && ln -s $TOOLS_DIR/$PYTHON_VENV"
+RUN echo "source $TOOLS_DIR/$PYTHON_VENV/bin/activate" >> ~/.bashrc
+RUN bash -c "source $TOOLS_DIR/$PYTHON_VENV/bin/activate && pip install --upgrade pip && pip install scapy scikit-learn"
+
+# pwntools
+ARG PWNTOOLS_DIR=pwntools
+RUN git clone https://github.com/Gallopsled/pwntools.git $TOOLS_DIR/$PWNTOOLS_DIR
+RUN bash -c "source $TOOLS_DIR/$PYTHON_VENV/bin/activate && cd $TOOLS_DIR/$PWNTOOLS_DIR  && pip install ."
+
+# angr & friends
+ARG ANGR_DIR=angr
+ARG ANGR_UTILS_DIR=angr-utils
+RUN git clone https://github.com/angr/angr.git $TOOLS_DIR/$ANGR_DIR
+RUN git clone https://github.com/axt/angr-utils.git $TOOLS_DIR/$ANGR_UTILS_DIR
+RUN bash -c "source $TOOLS_DIR/$PYTHON_VENV/bin/activate && cd $TOOLS_DIR/$ANGR_UTILS_DIR && pip install -r requirements.txt && pip install ."
+
+# gef
+ARG GEF_DIR=gef
+RUN sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && locale-gen
+ENV LANG en_US.UTF-8
+ENV LANGUAGE en_US:en
+ENV LC_ALL en_US.UTF-8
+ENV PYTHONPATH=$TOOLS_DIR/$PYTHON_VENV/lib/python3.11/site-packages
+RUN git clone https://github.com/hugsy/gef.git $TOOLS_DIR/$GEF_DIR && echo "source $TOOLS_DIR/$GEF_DIR/gef.py" >> ~/.gdbinit
+
+# gef-extras
+ARG GEF_EXTRAS_DIR=gef-extras
+RUN git clone https://github.com/hugsy/gef-extras.git $TOOLS_DIR/$GEF_EXTRAS_DIR && \
+  bash -c "source $TOOLS_DIR/$PYTHON_VENV/bin/activate && pip install -r $TOOLS_DIR/$GEF_EXTRAS_DIR/requirements.txt" && \
+  gdb -q -ex "gef config gef.extra_plugins_dir '$TOOLS_DIR/$GEF_EXTRAS_DIR/scripts'" \
+  -ex "gef config pcustom.struct_path '$TOOLS_DIR/$GEF_EXTRAS_DIR/structs'" \
+  -ex "gef config syscall-args.path '$TOOLS_DIR/$GEF_EXTRAS_DIR/syscall-tables'" \
+  -ex "gef config context.libc_args True" \
+  -ex "gef config context.libc_args_path '$TOOLS_DIR/$GEF_EXTRAS_DIR/glibc-function-args'" \
+  -ex 'gef save' \
+  -ex quit
+
+# Metasploit Framework
+RUN git clone https://github.com/rapid7/metasploit-framework.git $TOOLS_DIR/metasploit-framework && cd $TOOLS_DIR/metasploit-framework && bundler install
+
+CMD ["/usr/bin/supervisord"]
