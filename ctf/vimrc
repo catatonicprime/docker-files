@@ -1,0 +1,14 @@
+set tabstop=2
+set shiftwidth=2
+set softtabstop=2
+set expandtab
+syntax on
+
+" Fix backspace
+set backspace=indent,eol,start
+
+" Vundle
+set nocompatible              " be iMproved, required
+filetype off                  " required
+
+colo molokai

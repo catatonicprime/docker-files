@@ -1,7 +1,14 @@
 # ---- Stage 1: Building CTF console
 # --- Add software packages
 FROM ubuntu:latest
-RUN apt update && DEBIAN_FRONTEND=noninteractive apt dist-upgrade -y && DEBIAN_FRONTEND=noninteractive apt install -y ascii bundler clang curl file fish gdb git graphviz iproute2 iputils-ping libpcap-dev libpq-dev bundler llvm locales ltrace nmap openssh-server proxychains python3 python3-pip python3-venv socat ssh strace supervisor tcpdump tshark ttyd vim wget
+RUN apt update && DEBIAN_FRONTEND=noninteractive apt dist-upgrade -y && DEBIAN_FRONTEND=noninteractive apt install -y ascii automake autotools-dev bundler clang curl file fish gdb gdb-multiarch git graphviz iproute2 iputils-ping libc6-dbg libpcap-dev libpq-dev libseccomp-dev llvm locales ltrace m4 nmap openssh-server proxychains python3 python3-pip python3-venv socat ssh strace supervisor tcpdump tmux tshark ttyd vim wget
+
+# x86 packages for specific challenges.
+RUN dpkg --add-architecture i386
+RUN apt update && DEBIAN_FRONTEND=noninteractive apt install -y libseccomp2:i386 libc6-dbg:i386
+
+# Install ARM toolchains
+RUN apt update && DEBIAN_FRONTEND=noninteractive apt install -y binutils-aarch64-linux-gnu binutils-arm-linux-gnueabi binutils-arm-linux-gnueabihf gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi gcc-arm-linux-gnueabihf qemu-system-aarch64 qemu-system-arm qemu-user qemu-user-static
 
 # --- Setup supervisord which will let us run both ttyd and sshd for exposing the service.
 COPY ctf/supervisord.conf /etc/supervisor/conf.d/console.conf
@@ -62,6 +69,10 @@ RUN bash -c "source $TOOLS_DIR/$PYTHON_VENV/bin/activate && \
     PY_PATH=\$(python -c 'import site; print([d for d in site.getsitepackages() if d.endswith(\"site-packages\")][0])') && \
     echo \"export PYTHONPATH=\$PY_PATH\" >> \$HOME/.bashrc"
 RUN echo "source $TOOLS_DIR/$PYTHON_VENV/bin/activate" >> ~/.bashrc
+
+RUN mkdir -p ~/.vim/colors && curl -fLo ~/.vim/colors/molokai.vim --create-dirs https://raw.githubusercontent.com/tomasr/molokai/master/colors/molokai.vim
+COPY ctf/vimrc ~/.vimrc
+
 
 # --- Start Supervisord to begin the services
 USER root
